@@ -226,28 +226,9 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "https://api.dreamlab.solutions"
+site_url = "https://hub.dreamlab.solutions"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = [
-  "https://hub.dreamlab.solutions",
-  "https://hub.dreamlab.solutions/auth/login",
-  "https://hub.dreamlab.solutions/auth/callback",
-  "https://dls-platform-hub-next.vercel.app",
-  "https://dls-platform-hub-next.vercel.app/auth/login",
-  "https://dls-platform-hub-next.vercel.app/auth/callback",
-  "https://dreamlab.solutions",
-  "https://dreamlab.solutions/api/auth/callback",
-  "https://www.dreamlab.solutions",
-  "https://www.dreamlab.solutions/api/auth/callback",
-  "https://dls-website-astro.vercel.app",
-  "https://dls-website-astro.vercel.app/api/auth/callback",
-  "https://evidence.dreamlab.solutions",
-  "https://evidence.dreamlab.solutions/auth/login",
-  "https://evidence.dreamlab.solutions/auth/callback",
-  "https://evidence-gmtm-next.vercel.app",
-  "https://evidence-gmtm-next.vercel.app/auth/login",
-  "https://evidence-gmtm-next.vercel.app/auth/callback"
-]
+additional_redirect_urls = ["https://127.0.0.1:3000", "https://com-mytradingwiki-hq.vercel.app", "https://hub.dreamlab.solutions"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
@@ -450,7 +431,7 @@ allow_registration = true
 # Dynamic client onboarding stays off while these platforms are vetted.
 allow_dynamic_registration = false
 # The issuer should match the publicly routed consent host.
-issuer_url = "https://api.dreamlab.solutions"
+issuer_url = "https://com-mytradingwiki-hq.vercel.app"
 
 [[auth.oauth_server.clients]]
 name = "dls-platform-hub"

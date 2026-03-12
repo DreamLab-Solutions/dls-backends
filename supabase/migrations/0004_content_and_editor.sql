@@ -68,153 +68,69 @@ using (
   )
 );
 
-create or replace function public.bootstrap_project_content_models()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.content_models (project_id, uid, name, kind, has_draft_and_publish, has_i18n, fields)
-  values
-    (
-      new.id,
-      'globals',
-      'Global Settings',
-      'single',
-      true,
-      true,
-      '[
-         {"key":"site_name","label":"Site Name","type":"text","required":true},
-         {"key":"favicon","label":"Favicon","type":"media"}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'navigation',
-      'Navigation Menus',
-      'collection',
-      true,
-      true,
-      '[
-         {"key":"title","label":"Menu Title","type":"text","required":true},
-         {"key":"items","label":"Items","type":"component"}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'hero',
-      'Hero Sections',
-      'collection',
-      true,
-      true,
-      '[
-         {"key":"title","label":"Title","type":"text","required":true},
-         {"key":"subtitle","label":"Subtitle","type":"text"},
-         {"key":"cta_label","label":"CTA Label","type":"text"},
-         {"key":"cta_url","label":"CTA URL","type":"text"},
-         {"key":"background_image","label":"Background Image","type":"media"}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'feature_section',
-      'Feature Sections',
-      'collection',
-      true,
-      true,
-      '[
-         {"key":"title","label":"Title","type":"text","required":true},
-         {"key":"features","label":"Features","type":"component"}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'cards',
-      'Cards',
-      'collection',
-      true,
-      true,
-      '[
-         {"key":"title","label":"Title","type":"text","required":true},
-         {"key":"description","label":"Description","type":"richtext"},
-         {"key":"icon","label":"Icon","type":"media"},
-         {"key":"link","label":"Link","type":"text"}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'forms',
-      'Forms',
-      'collection',
-      true,
-      true,
-      '[
-         {"key":"title","label":"Form Title","type":"text","required":true},
-         {"key":"submit_label","label":"Submit Button Label","type":"text"},
-         {"key":"fields","label":"Form Fields","type":"component"}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'tags',
-      'Tags',
-      'collection',
-      true,
-      false,
-      '[
-         {"key":"name","label":"Name","type":"text","required":true},
-         {"key":"slug","label":"Slug","type":"text","required":true}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'seo',
-      'SEO Defaults',
-      'single',
-      true,
-      true,
-      '[
-         {"key":"meta_title","label":"Meta Title","type":"text"},
-         {"key":"meta_description","label":"Meta Description","type":"text"},
-         {"key":"og_image","label":"OG Image","type":"media"}
-       ]'::jsonb
-    ),
-    (
-      new.id,
-      'footer',
-      'Footer',
-      'single',
-      true,
-      true,
-      '[
-         {"key":"copyright","label":"Copyright Text","type":"text"},
-         {"key":"links","label":"Footer Links","type":"relation"}
-       ]'::jsonb
-    )
-  on conflict (project_id, uid) do update
-    set name = excluded.name,
-        kind = excluded.kind,
-        has_draft_and_publish = excluded.has_draft_and_publish,
-        has_i18n = excluded.has_i18n,
-        fields = excluded.fields;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists bootstrap_project_content_models on public.projects;
-create trigger bootstrap_project_content_models
-  after insert on public.projects
-  for each row
-  execute function public.bootstrap_project_content_models();
-
 -- Seed Data (One-time)
 do $$
+declare
+  v_project_id uuid;
+  v_exists boolean;
 begin
-  -- Canonical reset content bootstrap is handled by project triggers and the
-  -- operational DreamLab/Evidence seeds. Keep this legacy demo block as a no-op.
-  null;
+  -- Find the demo project
+  select id into v_project_id from projects where slug = 'trademind-demo';
+  
+  if v_project_id is not null then
+    -- Check if models already exist
+    select exists(select 1 from content_models where project_id = v_project_id) into v_exists;
+    
+    if not v_exists then
+        -- Insert Models
+        
+        -- Article
+        insert into content_models (project_id, uid, name, kind, has_draft_and_publish, has_i18n, fields)
+        values (v_project_id, 'api::article.article', 'Article', 'collection', true, true, 
+          '[
+            {"key": "title", "label": "Title", "type": "text", "required": true, "translatable": true},
+            {"key": "content", "label": "Content", "type": "richtext", "translatable": true},
+            {"key": "cover", "label": "Cover Image", "type": "media", "required": false},
+            {"key": "category", "label": "Category", "type": "relation", "required": true}
+          ]'::jsonb
+        );
+
+        -- Product
+        insert into content_models (project_id, uid, name, kind, has_draft_and_publish, has_i18n, fields)
+        values (v_project_id, 'api::product.product', 'Product', 'collection', true, true, 
+          '[
+            {"key": "name", "label": "Name", "type": "text", "required": true, "translatable": true},
+            {"key": "price", "label": "Price", "type": "number", "required": true},
+            {"key": "description", "label": "Description", "type": "richtext", "translatable": true}
+          ]'::jsonb
+        );
+
+        -- Navigation
+        insert into content_models (project_id, uid, name, kind, has_draft_and_publish, has_i18n, fields)
+        values (v_project_id, 'api::global.navigation', 'Main Navigation', 'single', false, true, '[]'::jsonb);
+
+        -- Insert Entries
+
+        -- Article 1
+        insert into content_entries (project_id, model_uid, status, title, author, updated_at, data)
+        values (v_project_id, 'api::article.article', 'published', 'The Future of CMS', 'John Doe', '2023-10-24T10:00:00Z', 
+          '{"en": {}, "it": {}}'::jsonb
+        );
+
+        -- Article 2
+        insert into content_entries (project_id, model_uid, status, title, author, updated_at, data)
+        values (v_project_id, 'api::article.article', 'draft', 'Why Feature Flags Matter', 'Jane Smith', '2023-10-25T14:30:00Z', 
+          '{"en": {}}'::jsonb
+        );
+
+        -- Product 1
+        insert into content_entries (project_id, model_uid, status, title, author, updated_at, data)
+        values (v_project_id, 'api::product.product', 'published', 'Super Widget 3000', 'Admin', '2023-10-20T09:15:00Z', 
+          '{"en": {}, "es": {}, "it": {}}'::jsonb
+        );
+        
+    end if;
+  end if;
 end $$;
 
 
@@ -888,276 +804,3 @@ CREATE POLICY "Allow public read access on platform_locales" ON platform_locales
 
 
 -- END LEGACY: 0042_centralized_locales.sql
-
--- ============================================================================
--- CONTENT GOVERNANCE EXTENSIONS
--- ============================================================================
-
-create table if not exists public.content_model_definitions (
-  key text primary key,
-  package_key text references public.package_definitions(key) on delete set null,
-  name text not null,
-  description text,
-  category text not null
-    check (category in ('page', 'copy', 'meta', 'content', 'config')),
-  kind text not null check (kind in ('collection', 'single')),
-  has_draft_and_publish boolean not null default true,
-  has_i18n boolean not null default false,
-  fields jsonb not null default '[]'::jsonb,
-  latest_version text not null,
-  latest_schema_checksum text,
-  latest_source_commit_sha text,
-  interface_key text references public.interface_definitions(key) on delete set null,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.content_model_versions (
-  definition_key text not null references public.content_model_definitions(key) on delete cascade,
-  version text not null,
-  schema_checksum text,
-  source_commit_sha text,
-  change_kind text not null
-    check (change_kind in ('breaking', 'backward_compatible', 'editorial')),
-  fields jsonb not null default '[]'::jsonb,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  primary key (definition_key, version)
-);
-
-alter table public.content_models
-  add column if not exists definition_key text references public.content_model_definitions(key) on delete set null,
-  add column if not exists canonical_key text,
-  add column if not exists pinned_version text,
-  add column if not exists schema_checksum text,
-  add column if not exists source_commit_sha text,
-  add column if not exists source_package_key text references public.package_definitions(key) on delete set null,
-  add column if not exists inheritance_mode text not null default 'owned'
-    check (inheritance_mode in ('owned', 'inherited', 'forked', 'disabled')),
-  add column if not exists adoption_status text not null default 'aligned'
-    check (adoption_status in ('aligned', 'update_available', 'incompatible', 'disabled'));
-
-create table if not exists public.project_content_model_bindings (
-  project_id uuid not null,
-  model_uid text not null,
-  definition_uid text not null references public.content_model_definitions(key) on delete restrict,
-  pinned_version text not null,
-  adoption_status text not null default 'aligned'
-    check (adoption_status in ('aligned', 'update_available', 'incompatible', 'disabled')),
-  materialization_path text,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  primary key (project_id, model_uid),
-  foreign key (project_id, model_uid) references public.content_models(project_id, uid) on delete cascade
-);
-
-create table if not exists public.project_model_contract_bindings (
-  project_id uuid not null,
-  owner_model_uid text not null,
-  contract_definition_uid text not null references public.content_model_definitions(key) on delete cascade,
-  binding_mode text not null
-    check (binding_mode in ('inherits', 'overrides', 'disabled')),
-  pinned_version text,
-  adoption_status text not null default 'aligned'
-    check (adoption_status in ('aligned', 'update_available', 'incompatible', 'disabled')),
-  materialization_path text,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  primary key (project_id, owner_model_uid, contract_definition_uid),
-  foreign key (project_id, owner_model_uid) references public.content_models(project_id, uid) on delete cascade
-);
-
-create table if not exists public.project_model_contracts (
-  project_id uuid not null,
-  consumer_model_uid text not null,
-  contract_role text not null,
-  contract_definition_key text references public.content_model_definitions(key) on delete set null,
-  provider_model_uid text,
-  provider_package_key text references public.package_definitions(key) on delete set null,
-  inheritance_mode text not null
-    check (inheritance_mode in ('owned', 'inherited', 'forked', 'disabled')),
-  pinned_version text,
-  inherited_version text,
-  is_enabled boolean not null default true,
-  schema_checksum text,
-  source_commit_sha text,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  primary key (project_id, consumer_model_uid, contract_role),
-  foreign key (project_id, consumer_model_uid) references public.content_models(project_id, uid) on delete cascade
-);
-
-create index if not exists idx_content_model_definitions_package
-  on public.content_model_definitions(package_key);
-create index if not exists idx_content_model_versions_definition
-  on public.content_model_versions(definition_key);
-create index if not exists idx_project_content_model_bindings_project
-  on public.project_content_model_bindings(project_id);
-create index if not exists idx_project_model_contract_bindings_project
-  on public.project_model_contract_bindings(project_id);
-create index if not exists idx_project_model_contracts_project
-  on public.project_model_contracts(project_id);
-
-alter table public.content_model_definitions enable row level security;
-alter table public.content_model_versions enable row level security;
-alter table public.project_content_model_bindings enable row level security;
-alter table public.project_model_contract_bindings enable row level security;
-alter table public.project_model_contracts enable row level security;
-
-create policy "Content model definitions visible to members"
-  on public.content_model_definitions for select
-  using (
-    exists (
-      select 1
-      from public.tenant_members
-      where tenant_members.user_id = auth.uid()
-    )
-  );
-
-create policy "Content model definition versions visible to members"
-  on public.content_model_versions for select
-  using (
-    exists (
-      select 1
-      from public.tenant_members
-      where tenant_members.user_id = auth.uid()
-    )
-  );
-
-create policy "Project content model bindings visible to members"
-  on public.project_content_model_bindings for all
-  using (
-    exists (
-      select 1
-      from public.projects
-      join public.tenant_members on tenant_members.tenant_id = projects.tenant_id
-      where projects.id = project_content_model_bindings.project_id
-        and tenant_members.user_id = auth.uid()
-    )
-  )
-  with check (
-    exists (
-      select 1
-      from public.projects
-      join public.tenant_members on tenant_members.tenant_id = projects.tenant_id
-      where projects.id = project_content_model_bindings.project_id
-        and tenant_members.user_id = auth.uid()
-    )
-  );
-
-create policy "Project model contract bindings visible to members"
-  on public.project_model_contract_bindings for all
-  using (
-    exists (
-      select 1
-      from public.projects
-      join public.tenant_members on tenant_members.tenant_id = projects.tenant_id
-      where projects.id = project_model_contract_bindings.project_id
-        and tenant_members.user_id = auth.uid()
-    )
-  )
-  with check (
-    exists (
-      select 1
-      from public.projects
-      join public.tenant_members on tenant_members.tenant_id = projects.tenant_id
-      where projects.id = project_model_contract_bindings.project_id
-        and tenant_members.user_id = auth.uid()
-    )
-  );
-
-create policy "Project model contracts visible to members"
-  on public.project_model_contracts for all
-  using (
-    exists (
-      select 1
-      from public.projects
-      join public.tenant_members on tenant_members.tenant_id = projects.tenant_id
-      where projects.id = project_model_contracts.project_id
-        and tenant_members.user_id = auth.uid()
-    )
-  )
-  with check (
-    exists (
-      select 1
-      from public.projects
-      join public.tenant_members on tenant_members.tenant_id = projects.tenant_id
-      where projects.id = project_model_contracts.project_id
-        and tenant_members.user_id = auth.uid()
-    )
-  );
-
-create or replace function public.advance_project_content_model_version(
-  p_project_id uuid,
-  p_model_uid text,
-  p_target_version text
-)
-returns public.content_models
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  model_row public.content_models%rowtype;
-  version_row public.content_model_versions%rowtype;
-begin
-  select *
-  into model_row
-  from public.content_models
-  where project_id = p_project_id
-    and uid = p_model_uid;
-
-  if not found then
-    raise exception 'Content model % not found for project %', p_model_uid, p_project_id;
-  end if;
-
-  if model_row.definition_key is null then
-    raise exception 'Content model % has no definition key and cannot advance version', p_model_uid;
-  end if;
-
-  select *
-  into version_row
-  from public.content_model_versions
-  where definition_key = model_row.definition_key
-    and version = p_target_version;
-
-  if not found then
-    raise exception 'Version % not found for definition %', p_target_version, model_row.definition_key;
-  end if;
-
-  update public.content_models
-  set pinned_version = version_row.version,
-      schema_checksum = version_row.schema_checksum,
-      source_commit_sha = version_row.source_commit_sha,
-      fields = version_row.fields,
-      adoption_status = 'aligned',
-      inheritance_mode = case
-        when inheritance_mode = 'disabled' then 'disabled'
-        else inheritance_mode
-      end
-  where project_id = p_project_id
-    and uid = p_model_uid
-  returning *
-  into model_row;
-
-  update public.project_content_model_bindings
-  set pinned_version = version_row.version,
-      adoption_status = 'aligned',
-      updated_at = now()
-  where project_id = p_project_id
-    and model_uid = p_model_uid;
-
-  update public.project_model_contracts
-  set pinned_version = version_row.version,
-      inherited_version = version_row.version,
-      schema_checksum = version_row.schema_checksum,
-      source_commit_sha = version_row.source_commit_sha
-  where project_id = p_project_id
-    and consumer_model_uid = p_model_uid
-    and inheritance_mode <> 'disabled';
-
-  return model_row;
-end;
-$$;

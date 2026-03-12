@@ -62,11 +62,7 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = [
-  "./seeds/001_admin_user.sql",
-  "./seeds/002_dreamlab_base_seed.sql",
-  "./seeds/003_evidence_mgmt_seed.sql",
-]
+sql_paths = ["./seeds/001_admin_user.sql", "./seeds/002_evidence_mgmt_seed.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -156,10 +152,46 @@ allowed_mime_types = [
   "text/plain"
 ]
 
+[storage.buckets.mytradingwiki_screenshots]
+public = false
+file_size_limit = "25MiB"
+allowed_mime_types = [
+  "image/png",
+  "image/jpeg",
+  "image/webp"
+]
+
+[storage.buckets.mytradingwiki_videos]
+public = false
+file_size_limit = "150MiB"
+allowed_mime_types = [
+  "video/mp4",
+  "video/webm"
+]
+
+[storage.buckets.mytradingwiki_audio]
+public = false
+file_size_limit = "60MiB"
+allowed_mime_types = [
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav"
+]
+
+[storage.buckets.mytradingwiki_docs]
+public = true
+file_size_limit = "120MiB"
+allowed_mime_types = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain"
+]
+
 # Sharing notes: keep screenshot/video/audio buckets private and deliver links via `create_signed_url`
 # so TTLs and policies stay enforceable. Documents buckets are public-only when we want an easily shareable
 # permalink; otherwise toggle `public = false` and rely on signed URLs per link request. Always scope policies
-# so DreamLab apps only write to their owned buckets.
+# (RLS or storage bucket policies) so consumers under dreamlab/mytradingwiki write only to their own buckets.
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
@@ -194,10 +226,24 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "__DREAMLAB_SUPABASE_SITE_URL__"
+site_url = "http://127.0.0.1:5173"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-# Rendered at runtime from root .env.local plus backends/supabase/.env.public.
-additional_redirect_urls = __DREAMLAB_SUPABASE_ADDITIONAL_REDIRECT_URLS__
+additional_redirect_urls = [
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173/auth/login",
+  "http://localhost:5173/auth/login",
+  "http://127.0.0.1:5173/auth/callback",
+  "http://localhost:5173/auth/callback",
+  "http://127.0.0.1:5173/auth/supabase-callback",
+  "http://localhost:5173/auth/supabase-callback",
+  "https://127.0.0.1:3000",
+  "http://127.0.0.1:3000/auth/supabase-callback",
+  "http://localhost:3000/auth/supabase-callback",
+  "https://com-mytradingwiki-hq.vercel.app",
+  "https://com-mytradingwiki-hq.vercel.app/auth/supabase-callback",
+  "https://hub.dreamlab.solutions"
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).

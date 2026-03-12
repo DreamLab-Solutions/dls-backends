@@ -42,9 +42,8 @@ The admin user is created by the seed file: `backends/supabase/seeds/001_admin_u
 This seed:
 1. Creates the admin user in `auth.users` with a bcrypt-hashed password
 2. Adds the user to `platform_users` with `platform_owner` role
-3. Creates/updates the `dreamlab-solutions` tenant
-4. Adds the admin as `tenant_owner` of the `dreamlab-solutions` tenant
-5. Leaves canonical tenant/project bootstrap to the DB baseline plus the ordered reset seeds configured in `config.toml`
+3. Creates/updates the `dreamlab` tenant
+4. Adds the admin as `tenant_owner` of the dreamlab tenant
 
 ## Usage
 

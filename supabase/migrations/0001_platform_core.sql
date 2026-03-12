@@ -21,7 +21,7 @@ create table if not exists tenants (
 -- Table: tenant_members
 create table if not exists tenant_members (
   tenant_id uuid not null references tenants(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null, -- Intentionally loose FK to allow flexible auth
   role text not null,
   created_at timestamptz not null default now(),
   primary key (tenant_id, user_id)
@@ -135,53 +135,6 @@ using (
   )
 );
 
-create or replace function public.bootstrap_project_foundations()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.environments (project_id, key, name)
-  values
-    (new.id, 'dev', 'Development'),
-    (new.id, 'stage', 'Staging'),
-    (new.id, 'prod', 'Production')
-  on conflict (project_id, key) do update
-    set name = excluded.name;
-
-  insert into public.project_locales (project_id, locale, is_default)
-  values
-    (new.id, 'en', true),
-    (new.id, 'it', false)
-  on conflict (project_id, locale) do update
-    set is_default = excluded.is_default;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists bootstrap_project_foundations on public.projects;
-create trigger bootstrap_project_foundations
-  after insert on public.projects
-  for each row
-  execute function public.bootstrap_project_foundations();
-
-insert into public.environments (project_id, key, name)
-select p.id, e.key, e.name
-from public.projects p
-cross join (values ('dev', 'Development'), ('stage', 'Staging'), ('prod', 'Production')) as e(key, name)
-on conflict (project_id, key) do update
-  set name = excluded.name;
-
-insert into public.project_locales (project_id, locale, is_default)
-select p.id, l.locale, l.is_default
-from public.projects p
-cross join (values ('en', true), ('it', false)) as l(locale, is_default)
-on conflict (project_id, locale) do update
-  set is_default = excluded.is_default;
-
-
 -- Seed Data
 do $$
 declare
@@ -199,8 +152,31 @@ begin
     select id into v_tenant_id from tenants where slug = 'dreamlab-solutions';
   end if;
 
-  -- Canonical project bootstrap is handled by operational seeds.
-  -- Keep this legacy block tenant-only so db reset does not create demo projects.
+  -- Insert Project
+  insert into projects (tenant_id, name, slug, repo_path)
+  values (v_tenant_id, 'TradeMind Demo', 'trademind-demo', 'github.com/dreamlab/trademind')
+  on conflict (tenant_id, slug) do update set name = excluded.name
+  returning id into v_project_id;
+
+  if v_project_id is null then
+    select id into v_project_id from projects where tenant_id = v_tenant_id and slug = 'trademind-demo';
+  end if;
+
+  -- Insert Environments
+  insert into environments (project_id, key, name)
+  values 
+    (v_project_id, 'dev', 'Development'),
+    (v_project_id, 'stage', 'Staging'),
+    (v_project_id, 'prod', 'Production')
+  on conflict (project_id, key) do nothing;
+
+  -- Insert Locales
+  insert into project_locales (project_id, locale, is_default)
+  values 
+    (v_project_id, 'en', true),
+    (v_project_id, 'it', false)
+  on conflict (project_id, locale) do nothing;
+
 end $$;
 
 
@@ -261,7 +237,7 @@ create table if not exists billing_provider_definitions (
 
 create table if not exists tenant_billing_providers (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references tenants(id) on delete cascade,
+  tenant_id uuid not null, -- assumption: linked to tenants table, but no FK enforced to keep it loose for now or rely on existing tables
   provider_key text references billing_provider_definitions(key) on delete cascade not null,
   status text default 'disconnected' check (status in ('disconnected', 'connected', 'error')),
   config jsonb default '{}'::jsonb,
@@ -272,7 +248,7 @@ create table if not exists tenant_billing_providers (
 
 create table if not exists billing_products (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid references tenants(id) on delete cascade, -- if null, system level product
+  tenant_id uuid, -- if null, system level product
   provider_id text, -- external ID from stripe/etc
   name text not null,
   description text,
@@ -297,7 +273,7 @@ create table if not exists billing_plans (
 
 create table if not exists tenant_subscriptions (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references tenants(id) on delete cascade,
+  tenant_id uuid not null,
   provider_key text references billing_provider_definitions(key),
   plan_id uuid references billing_plans(id),
   status text default 'active' check (status in ('active', 'canceled', 'past_due', 'trialing', 'incomplete')),
@@ -310,7 +286,7 @@ create table if not exists tenant_subscriptions (
 
 create table if not exists tenant_entitlements (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references tenants(id) on delete cascade,
+  tenant_id uuid not null,
   project_id uuid references projects(id) on delete cascade,
   environment_id uuid references environments(id) on delete cascade,
   key text not null,
@@ -320,15 +296,6 @@ create table if not exists tenant_entitlements (
   updated_at timestamptz default now(),
   unique(tenant_id, project_id, environment_id, key) -- Ensure unique override per scope
 );
-
-create index if not exists idx_tenant_entitlements_tenant
-  on tenant_entitlements(tenant_id);
-create index if not exists idx_tenant_entitlements_project
-  on tenant_entitlements(project_id);
-create index if not exists idx_tenant_entitlements_environment
-  on tenant_entitlements(environment_id);
-create index if not exists idx_tenant_entitlements_key
-  on tenant_entitlements(key);
 
 -- RLS
 
@@ -436,186 +403,6 @@ insert into billing_provider_definitions (key, name, description) values
 ('whop', 'Whop', 'Digital marketplace'),
 ('bunq', 'bunq', 'Modern banking')
 on conflict (key) do nothing;
-
-create or replace function public.apply_subscription_plan_entitlements(target_subscription_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_subscription record;
-  v_item jsonb;
-  v_project_id uuid;
-  v_environment_id uuid;
-  v_value jsonb;
-begin
-  delete from public.tenant_entitlements
-  where source = 'plan'
-    and value->>'subscriptionId' = target_subscription_id::text;
-
-  select
-    ts.id,
-    ts.tenant_id,
-    ts.plan_id,
-    ts.status,
-    bp.metadata as plan_metadata
-  into v_subscription
-  from public.tenant_subscriptions ts
-  left join public.billing_plans bp on bp.id = ts.plan_id
-  where ts.id = target_subscription_id;
-
-  if v_subscription.id is null then
-    return;
-  end if;
-
-  if v_subscription.status not in ('active', 'trialing') then
-    return;
-  end if;
-
-  if coalesce(jsonb_typeof(v_subscription.plan_metadata->'entitlements'), 'null') <> 'array' then
-    return;
-  end if;
-
-  for v_item in
-    select value
-    from jsonb_array_elements(v_subscription.plan_metadata->'entitlements')
-  loop
-    v_project_id := null;
-    v_environment_id := null;
-
-    if nullif(v_item->>'projectSlug', '') is not null then
-      select p.id
-      into v_project_id
-      from public.projects p
-      where p.tenant_id = v_subscription.tenant_id
-        and p.slug = v_item->>'projectSlug'
-      limit 1;
-    end if;
-
-    if v_project_id is not null and nullif(v_item->>'environmentKey', '') is not null then
-      select e.id
-      into v_environment_id
-      from public.environments e
-      where e.project_id = v_project_id
-        and e.key = v_item->>'environmentKey'
-      limit 1;
-    end if;
-
-    v_value := jsonb_build_object(
-      'enabled', coalesce((v_item->>'enabled')::boolean, true),
-      'subscriptionId', target_subscription_id,
-      'planId', v_subscription.plan_id,
-      'origin', 'billing-plan'
-    );
-
-    if v_item ? 'value' then
-      v_value := v_value || jsonb_build_object('grant', v_item->'value');
-    end if;
-
-    insert into public.tenant_entitlements (
-      tenant_id,
-      project_id,
-      environment_id,
-      key,
-      value,
-      source,
-      updated_at
-    )
-    values (
-      v_subscription.tenant_id,
-      v_project_id,
-      v_environment_id,
-      v_item->>'key',
-      v_value,
-      'plan',
-      now()
-    )
-    on conflict (tenant_id, project_id, environment_id, key) do update
-      set value = excluded.value,
-          source = excluded.source,
-          updated_at = excluded.updated_at;
-  end loop;
-end;
-$$;
-
-create or replace function public.sync_subscription_plan_entitlements()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if tg_op = 'DELETE' then
-    delete from public.tenant_entitlements
-    where source = 'plan'
-      and value->>'subscriptionId' = old.id::text;
-    return old;
-  end if;
-
-  perform public.apply_subscription_plan_entitlements(new.id);
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_sync_subscription_plan_entitlements on public.tenant_subscriptions;
-create trigger trg_sync_subscription_plan_entitlements
-  after insert or update or delete on public.tenant_subscriptions
-  for each row
-  execute function public.sync_subscription_plan_entitlements();
-
-create or replace function public.entitlements_effective_for_environment(
-  target_tenant_id uuid,
-  target_project_id uuid default null,
-  target_environment_id uuid default null
-)
-returns table (
-  key text,
-  value jsonb,
-  source_scope text,
-  source text
-)
-language sql
-stable
-as $$
-  with scoped as (
-    select
-      te.key,
-      te.value,
-      te.source,
-      te.updated_at,
-      case
-        when te.environment_id is not null then 4
-        when te.project_id is not null then 3
-        when te.tenant_id is not null then 2
-        else 1
-      end as specificity,
-      case
-        when te.environment_id is not null then 'environment'
-        when te.project_id is not null then 'project'
-        when te.tenant_id is not null then 'tenant'
-        else 'system'
-      end as resolved_scope
-    from public.tenant_entitlements te
-    where te.tenant_id = target_tenant_id
-      and (
-        (target_environment_id is not null and te.environment_id = target_environment_id)
-        or (target_project_id is not null and te.project_id = target_project_id and te.environment_id is null)
-        or (te.project_id is null and te.environment_id is null)
-      )
-  ),
-  ranked as (
-    select distinct on (scoped.key)
-      scoped.key,
-      scoped.value,
-      scoped.resolved_scope,
-      scoped.source
-    from scoped
-    order by scoped.key, scoped.specificity desc, scoped.updated_at desc nulls last
-  )
-  select ranked.key, ranked.value, ranked.resolved_scope, ranked.source
-  from ranked;
-$$;
 
 
 -- END LEGACY: 0009_billing.sql
