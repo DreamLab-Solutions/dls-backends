@@ -1,0 +1,24 @@
+{
+  "name": "dreamlab-ops-daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "echo \"No build step required\""
+  },
+  "dependencies": {
+    "@dreamlab-solutions/dls-domain": "workspace:*",
+    "express": "^4.22.1",
+    "imapflow": "^1.2.9",
+    "mailparser": "^3.9.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^20.19.33",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,96 @@
+services:
+  hub-api:
+    build:
+      context: ../../..
+      dockerfile: apps/hub-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      OPS_DAEMON_URL: http://ops-daemon:5055
+      PAPERLESS_URL: http://${PAPERLESS_DOMAIN}
+      PAPERLESS_INTERNAL_URL: http://paperless:8000
+      PAYLOAD_PUBLIC_URL: http://${PAYLOAD_DOMAIN}
+      PAYLOAD_INTERNAL_URL: http://payload:3000
+      HUB_CONSOLE_ORIGIN: http://${HUB_DOMAIN}
+      AUDIT_LOG_PATH: /data/audit.jsonl
+      DATABASE_URI: ${DATABASE_URI_CORE}
+      VAULT_MASTER_KEY: ${VAULT_MASTER_KEY}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_REGION: ${MINIO_REGION}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_PREFIX: ${MINIO_BUCKET_PREFIX}
+      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN}
+    volumes:
+      - hub_api_data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hub-api.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.hub-api.entrypoints=web"
+      - "traefik.http.services.hub-api.loadbalancer.server.port=4000"
+    networks:
+      - hub
+
+  hub-console:
+    build:
+      context: ../../..
+      dockerfile: apps/hub-console/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://${API_DOMAIN}
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hub-console.rule=Host(`${HUB_DOMAIN}`)"
+      - "traefik.http.routers.hub-console.entrypoints=web"
+      - "traefik.http.services.hub-console.loadbalancer.server.port=80"
+    networks:
+      - hub
+
+  payload:
+    build:
+      context: ../../services/payload
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET}
+      DATABASE_URI: ${DATABASE_URI_PAYLOAD}
+      PAYLOAD_SCHEMA: ${PAYLOAD_SCHEMA}
+      PAYLOAD_PUBLIC_URL: http://${PAYLOAD_DOMAIN}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.payload.rule=Host(`${PAYLOAD_DOMAIN}`)"
+      - "traefik.http.routers.payload.entrypoints=web"
+      - "traefik.http.services.payload.loadbalancer.server.port=3000"
+    networks:
+      - hub
+
+  payload-db:
+    image: postgres:15-alpine
+    profiles: ["localdb"]
+    environment:
+      POSTGRES_DB: payload
+      POSTGRES_USER: payload
+      POSTGRES_PASSWORD: payload
+    volumes:
+      - payload_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payload -d payload"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub
+
+  hub-tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    environment:
+      HUB_CLOUDFLARED_TOKEN: ${HUB_CLOUDFLARED_TOKEN}
+    command: tunnel --no-autoupdate run --token ${HUB_CLOUDFLARED_TOKEN}
+    networks:
+      - hub
+
+volumes:
+  payload_db:
+  hub_api_data:

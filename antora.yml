@@ -1,0 +1,8 @@
+name: backend
+title: Backend (Supabase)
+version: "0.0.1"
+start_page: dev:overview.adoc
+nav:
+  - modules/dev/nav.adoc
+  - modules/investor/nav.adoc
+  - modules/user/nav.adoc

@@ -1,0 +1,13 @@
+{
+  "name": "@dreamlab-solutions/dls-backends",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run -ws build",
+    "typecheck": "npm run -ws typecheck"
+  }
+}

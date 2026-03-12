@@ -1,0 +1,33 @@
+services:
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    env_file:
+      - ../../../dev/paperless/docker-compose.env
+    depends_on:
+      - redis
+    volumes:
+      - paperless_data:/usr/src/paperless/data
+      - paperless_media:/usr/src/paperless/media
+      - paperless_export:/usr/src/paperless/export
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.paperless.rule=Host(`${PAPERLESS_DOMAIN}`)"
+      - "traefik.http.routers.paperless.entrypoints=web"
+      - "traefik.http.services.paperless.loadbalancer.server.port=8000"
+    networks:
+      - hub
+
+  paperless-tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    env_file:
+      - ../../../dev/paperless/docker-compose.env
+    command: tunnel --no-autoupdate run --token $$CLOUDFLARED_TOKEN
+    networks:
+      - hub
+
+volumes:
+  paperless_data:
+  paperless_media:
+  paperless_export:

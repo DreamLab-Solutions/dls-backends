@@ -1,0 +1,6 @@
+name: dreamlab-hub
+
+include:
+  - infra/compose/compose.core.yml
+  - infra/compose/compose.apps.yml
+  - infra/compose/compose.paperless.yml

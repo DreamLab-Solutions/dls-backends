@@ -1,0 +1,71 @@
+networks:
+  hub:
+    driver: bridge
+
+volumes:
+  redis_data:
+  minio_data:
+
+services:
+  traefik:
+    image: traefik:v2.11
+    restart: unless-stopped
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    ports:
+      - "80:80"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../../infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ../../infra/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+    networks:
+      - hub
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    networks:
+      - hub
+
+  ops-daemon:
+    build:
+      context: ../../
+      dockerfile: services/ops-daemon/Dockerfile
+    restart: unless-stopped
+    environment:
+      COMPOSE_FILE: /workspace/dev/compose/local-infra.compose.yml
+      HUB_API_URL: http://hub-api:4000
+      IMAP_HOST: ${IMAP_HOST}
+      IMAP_PORT: ${IMAP_PORT}
+      IMAP_USER: ${IMAP_USER}
+      IMAP_PASSWORD: ${IMAP_PASSWORD}
+      IMAP_TLS: ${IMAP_TLS}
+      IMAP_MAILBOX: ${IMAP_MAILBOX}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../:/workspace
+    ports:
+      - "127.0.0.1:5055:5055"
+    networks:
+      - hub
